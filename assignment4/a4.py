@@ -5,10 +5,296 @@
 import sys
 import random
 import signal
+import numpy as np
+import math
+import os
 
 # Custom time out exception
 class TimeoutException(Exception):
     pass
+
+class TranspositionTable():
+
+    def __init__(self):
+        self.transposition_table = {}
+
+    def update_TranspositionTable():
+        pass
+    def check_TranspositionTable():
+        pass  
+
+class Patterns():
+
+    def __init__(self):
+        self.patterns = {}
+        self.loadpatterns()
+    
+    def loadpatterns(self):
+        # script_directory = os.path.dirname(os.path.abspath(__file__))
+        script_directory = os.getcwd()
+        filename = script_directory+"/"+'fullpattern.txt'
+        self.patterns.clear()
+        with open(filename, 'r') as file:
+            for line in file:
+                line = line.strip()
+                if not line or line.startswith ("#"):
+                    continue # Skip empty lines and comments
+                parts = line.split()
+                pattern = parts[0]
+                move = int (parts [1])
+                weight = int(parts [2])
+                if pattern not in self.patterns:
+                    self.patterns[pattern] = {}
+                self.patterns[pattern][move]= weight
+
+    def generate_policy_probabilities(self, list_of_legal_moves, board_state):
+        legal_moves = sorted(list_of_legal_moves, key=lambda x: (x[0], x[1], x[2]))
+
+        unratioed_moves = []
+        #ratioed moves is the one with probabilties to be used for the policy
+        ratioed_moves = []
+        sum_of_all_weights = 0
+
+
+        for legal_move in legal_moves:
+            x_axis = int(legal_move[0])
+            y_axis = int(legal_move[1])
+            move = int(legal_move[2])
+
+            row_pattern = self.make_pattern(x_axis,y_axis,0, board_state)
+            # print("Row Pattern: " + row_pattern)
+
+            column_pattern = self.make_pattern(x_axis,y_axis,1, board_state)
+            # print("Column Pattern: " + column_pattern)
+
+            row_flipped = row_pattern[::-1]
+            column_flipped = column_pattern[::-1]
+            
+            # print("ROW: {} AND FLIPPED {}: ".format(row_pattern,row_flipped))
+            # print("COLUMN: {} AND FLIPPED {}: ".format(column_pattern,column_flipped))
+
+            #check if pattern and its axis-counterparts are in self.patterns
+
+            move
+            row = [row_pattern, row_flipped]
+            column = [column_pattern, column_flipped]
+
+            total_weight = 0
+
+            # when pattern is not in self.patterns, give a default of 10
+            hit = False
+            default = 10
+            for item in row:
+                if(item in self.patterns):
+                    total_weight += self.patterns[item][move]
+                    hit=True
+
+            if(not hit):
+                total_weight += default
+
+            hit = False
+            for item in column:
+                if(item in self.patterns):
+                    total_weight += self.patterns[item][move]
+                    hit=True
+                    
+            if(not hit):
+                total_weight += default
+
+            unratioed_item = [x_axis, y_axis, move, total_weight]
+            sum_of_all_weights += total_weight
+            unratioed_moves.append(unratioed_item)
+
+        for item in unratioed_moves:
+            new_item = [item[0],item[1],item[2],item[3]/sum_of_all_weights]
+            ratioed_moves.append(new_item)
+        
+        return ratioed_moves
+
+    def make_pattern(self,x_axis,y_axis,boolean,board):
+        """
+            if boolean is 0, return the row pattern
+            if boolean is 1, return the column pattern
+        """
+
+        if(boolean == 1):
+            temp = x_axis
+            x_axis = y_axis
+            y_axis = temp
+
+        five_pattern = ""
+
+        #left or up side of the pattern even when its not square
+        for i in range(2):
+            current_x = x_axis-2+i
+            if((current_x)<0):
+                five_pattern = five_pattern+"X"
+            else:
+                
+                if(boolean):
+                    item = board[current_x][y_axis]
+                else:
+                    item = board[y_axis][current_x]
+
+                if (item == None):
+                    item = '.'
+                five_pattern = five_pattern+str(item)
+        five_pattern = five_pattern + "."
+
+        #right or down side of the pattern
+        if boolean == 0:
+            limit = len(board[0])
+        else:
+            limit = len(board)
+        for i in range(2):
+            current_x = x_axis+(i+1)
+            if((current_x)>=limit):
+                five_pattern = five_pattern+"X"
+            else:
+
+                if(boolean):
+                    item = board[current_x][y_axis]
+                else:
+                    item = board[y_axis][current_x]
+
+                if (item == None):
+                    item = '.'
+                five_pattern = five_pattern+str(item)
+
+        return five_pattern
+
+class MyNode():
+    
+    def __init__(self, game, state, move_made=None, parent=None,):
+        self.game = game
+        self.state = state
+        self.parent = parent
+        self.move_made = move_made
+
+        self.children = []
+        self.wins = 0
+        self.score = None
+
+    def expand(self):
+        """
+
+            This does not play any move, rather, a node object with the move TO BE MADE is created
+            which keeps the board state unchanged.
+
+            The list of the node objects are returned.
+        """
+        childrenNodes = []
+        legal_moves = self.game.get_legal_moves()
+        for legal_move in legal_moves:
+            
+            childNode = MyNode(self.game, self.state, move_made=legal_move, parent= self)
+            childrenNodes.append(childNode)
+
+        self.children = childrenNodes    
+
+    def get_children(self):
+        return self.children
+    
+    def set_score(self, score):
+        self.score = score
+
+    def playMove(self):
+        self.game.play(self.move_made)
+# Attempt FLATMC First
+class FlatMC():
+    
+    def __init__(self, game, simulation_count=1, custom_policy=None):    
+        self.game = game
+        self.simulation_count = simulation_count
+        self.custom_policy = custom_policy
+
+    def run_algorithm(self):
+
+        initial_board_state = self.game.create_board_copy()
+        root_node = MyNode(self.game, initial_board_state)
+
+        root_node.expand() #initializes the children nodes
+        childrenNodes = root_node.get_children()
+        
+        for childNode in childrenNodes:
+            childNode.playMove()
+            score = self.simulate_and_score()
+            childNode.set_score(score)
+            self.reset_board(initial_board_state) 
+
+        sorted_objects = sorted(childrenNodes, key=lambda obj: obj.score, reverse=True) 
+        print(sorted_objects[0].score,sorted_objects[0].move_made)
+
+        return sorted_objects[0].move_made           
+
+    def simulate_and_score(self):
+        """
+        Simulates a run from start to a terminal state and tallies wins
+        """
+        board_state_from_node = self.game.create_board_copy()
+        wins = 0
+        for i in range(self.simulation_count):
+            while self.game.is_terminal() == False:
+                move = self.get_move_from_policy('RULE')
+                self.game.play(move)        
+            if self.check_win() == 1:
+                wins += 1
+
+            self.reset_board(board_state_from_node)
+
+        return wins/self.simulation_count
+
+    def reset_board(self, target_state):
+        self.game.board = []
+        for row in target_state:
+            self.game.board.append(list(row))
+
+    def expand(self, node: MyNode):
+        node.expand()
+
+    def get_random_move(self):
+        movelist = self.game.get_legal_moves()
+        random.shuffle(movelist)
+        random_move = movelist[0]
+        return random_move
+
+    def get_educated_move(self):
+        movelist = self.game.get_legal_moves()
+        data = self.custom_policy.generate_policy_probabilities(movelist, self.game.board)
+
+        cumulative = []
+        total = 0
+        for item in data:
+            total += item[3]
+            cumulative.append(total)
+
+        # Pick based on random number
+        rand_val = random.uniform(0, 1)
+        for i, threshold in enumerate(cumulative):
+            if rand_val <= threshold:
+                picked = data[i]
+                break
+
+        move_as_string = [str(x) for x in picked[:-1]]
+
+        return move_as_string
+
+    def get_move_from_policy(self, args):
+        """default policy is random"""
+        if args == 'RAND' or args == None:
+            
+            return self.get_random_move()
+            
+        elif args == 'RULE':
+            
+            return self.get_educated_move()
+        
+    def check_win(self):
+        if len(self.game.get_legal_moves()) == 0:
+            if self.game.player == 1:
+                return 2
+            else:
+                return 1
 
 # Function that is called when we reach the time limit
 def handle_alarm(signum, frame):
@@ -30,7 +316,7 @@ class CommandInterface:
         }
         self.board = [[None]]
         self.player = 1
-        self.max_genmove_time = 1
+        self.max_genmove_time = 30
         signal.signal(signal.SIGALRM, handle_alarm)
     
     #====================================================================================================================
@@ -231,10 +517,11 @@ class CommandInterface:
     #===============================================================================================
     # VVVVVVVVVV Start of Assignment 4 functions. Add/modify as needed. VVVVVVVV
     #===============================================================================================
+    
+    def is_terminal(self):
+        return len(self.get_legal_moves()) == 0
 
     def genmove(self, args):
-
-        self.flatMC()
 
         try:
             # Set the time limit alarm
@@ -245,9 +532,13 @@ class CommandInterface:
             if len(moves) == 0:
                 print("resign")
             else:
-                rand_move = moves[random.randint(0, len(moves)-1)]
-                self.play(rand_move)
-                print(" ".join(rand_move))
+
+                #---------------------------------
+                move_found = self.run_move_algorithm()
+                #---------------------------------
+                # rand_move = moves[random.randint(0, len(moves)-1)]
+                self.play(move_found)
+                # print(" ".join(rand_move))
             
             # Disable the time limit alarm 
             signal.alarm(0)
@@ -258,56 +549,18 @@ class CommandInterface:
 
         return True
     
-    def flatMC(self):
-        """
-        Returns the move with the highest winrate after a 1-ply simulation
-        """
+    def run_move_algorithm(self):
+        board_copy = self.create_board_copy()
+        simulation_count = 1000
+        custom_policy = Patterns()
+        flatMC = FlatMC(self, simulation_count, custom_policy)
+        return flatMC.run_algorithm()
 
-        #copy the original board to return to it later 
-        original_board_copy = self.deepCopy(self.board)
-
-        moves = self.get_legal_moves()
-        winrates = {}
-
-        for move in moves:
-            
-            #play move, which changes the board state once
-            self.play(move)
-
-            #from the changed board state, run N simulations
-
-            #place winrate of move into dictionary winrates
-            #use the number as the key and move as the value, so it's easier to sort
-        
-            pass
-
-        # findMoveWithHighestWinRateAndReturn
-        
-    def deepCopy(self, list_to_copy):
-        #(See "Deep Copy" as reasoning for the obscure method of copying)
-        return [row[:] for row in list_to_copy]
-
-    def runSimulations(self, N):
-        
-        #while the game is not finished 
-        while len(self.get_legal_moves()) != 0:
-            move = self.uniformRandomMoveGeneration()
-            self.play(move)
-        
-        if self.player == 1:
-            #1 run out of moves
-            print(2)
-            return 0
-        else:
-            #2 run out of moves
-            print(1)
-            return 1
-        
-
-    def uniformRandomMoveGeneration(self):
-        move_list = random.shuffle(self.get_legal_moves())
-        random_move = move_list[0]
-        return random_move
+    def create_board_copy(self):
+        board_copy = []
+        for row in self.board:
+            board_copy.append(list(row))
+        return board_copy
         
     #===============================================================================================
     # ɅɅɅɅɅɅɅɅɅɅ End of Assignment 4 functions. ɅɅɅɅɅɅɅɅɅɅ
