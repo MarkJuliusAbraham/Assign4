@@ -233,6 +233,9 @@ class CommandInterface:
     #===============================================================================================
 
     def genmove(self, args):
+
+        self.flatMC()
+
         try:
             # Set the time limit alarm
             signal.alarm(self.max_genmove_time)
@@ -255,6 +258,57 @@ class CommandInterface:
 
         return True
     
+    def flatMC(self):
+        """
+        Returns the move with the highest winrate after a 1-ply simulation
+        """
+
+        #copy the original board to return to it later 
+        original_board_copy = self.deepCopy(self.board)
+
+        moves = self.get_legal_moves()
+        winrates = {}
+
+        for move in moves:
+            
+            #play move, which changes the board state once
+            self.play(move)
+
+            #from the changed board state, run N simulations
+
+            #place winrate of move into dictionary winrates
+            #use the number as the key and move as the value, so it's easier to sort
+        
+            pass
+
+        # findMoveWithHighestWinRateAndReturn
+        
+    def deepCopy(self, list_to_copy):
+        #(See "Deep Copy" as reasoning for the obscure method of copying)
+        return [row[:] for row in list_to_copy]
+
+    def runSimulations(self, N):
+        
+        #while the game is not finished 
+        while len(self.get_legal_moves()) != 0:
+            move = self.uniformRandomMoveGeneration()
+            self.play(move)
+        
+        if self.player == 1:
+            #1 run out of moves
+            print(2)
+            return 0
+        else:
+            #2 run out of moves
+            print(1)
+            return 1
+        
+
+    def uniformRandomMoveGeneration(self):
+        move_list = random.shuffle(self.get_legal_moves())
+        random_move = move_list[0]
+        return random_move
+        
     #===============================================================================================
     # ɅɅɅɅɅɅɅɅɅɅ End of Assignment 4 functions. ɅɅɅɅɅɅɅɅɅɅ
     #===============================================================================================
