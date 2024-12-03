@@ -13,15 +13,39 @@ import os
 class TimeoutException(Exception):
     pass
 
-class TranspositionTable():
+class ZobristHashing():
 
-    def __init__(self):
-        self.transposition_table = {}
+    def __init__(self, x_dim, y_dim):
+        self.x_dim = x_dim
+        self.y_dim = y_dim
 
-    def update_TranspositionTable():
-        pass
-    def check_TranspositionTable():
-        pass  
+    def random_int(self):
+        min = 0
+        max = pow(2,64)
+        return random.randint(min,max)
+    
+    def indexOf(self,piece):
+        if (piece==0):
+            return 0
+        elif (piece==1):
+            return 1
+        else:
+            return -1
+    
+    def initTable(self):
+        
+        num_item_to_place_on_board = 2
+        ZobristTable = [[[self.random_int() for k in range(num_item_to_place_on_board)] for j in range(self.y_dim)] for i in range (self.x_dim)]
+        return ZobristTable
+    
+    def computeHash(self, game_board, ZobristTable):
+        h = 0
+        for i in range(self.x_dim):
+            for j in range(self.y_dim):
+                if (game_board[j][i] != None):
+                    piece = self.indexOf(game_board[j][i])
+                    h ^= ZobristTable[i][j][piece]
+        return h
 
 class Patterns():
 
@@ -177,7 +201,6 @@ class MyNode():
 
     def expand(self):
         """
-
             This does not play any move, rather, a node object with the move TO BE MADE is created
             which keeps the board state unchanged.
 
@@ -200,13 +223,36 @@ class MyNode():
 
     def playMove(self):
         self.game.play(self.move_made)
-# Attempt FLATMC First
+
+class TranspositionTable():
+
+    def __init__(self):
+        self.transposition_table = {}
+
+    def update_TranspositionTable(self, hash, score):
+
+        self.transposition_table[hash] = score
+
+    def get_equivalent_score(self, hash):
+        
+        return self.transposition_table[hash]
+
+    def contains(self, hash_value):
+
+        return hash_value in self.transposition_table
+
+    def initialize_symmetries(self, board):
+        
+        pass
+
 class FlatMC():
     
     def __init__(self, game, simulation_count=1, custom_policy=None):    
         self.game = game
         self.simulation_count = simulation_count
         self.custom_policy = custom_policy
+        self.hasher = ZobristHashing(len(self.game.board[0]),len(self.game.board))
+        self.table = self.hasher.initTable()
 
     def run_algorithm(self):
 
@@ -215,15 +261,68 @@ class FlatMC():
 
         root_node.expand() #initializes the children nodes
         childrenNodes = root_node.get_children()
-        
+        t_table = TranspositionTable()
+
+        if len(childrenNodes) > 18:
+            self.simulation_count = 100
+        else:
+            self.simulattion_count = 1000
+
         for childNode in childrenNodes:
             childNode.playMove()
-            score = self.simulate_and_score()
-            childNode.set_score(score)
+            #IF Transposition Table contains the childnode equivalent
+            hash = self.hasher.computeHash(self.game.board, self.table)
+            if t_table.contains(hash):
+                
+                #Fetch the score and assign it
+                score = t_table.get_equivalent_score(hash)
+                childNode.set_score(score)
+            else:
+            #Otherwise, play the move, simulate from the move then compute the score
+                score = self.simulate_and_score()
+                childNode.set_score(score)
+                #Then, place all the symmetries to the transposition table
+                
+                t_table.update_TranspositionTable(hash,score)
+                flip_board = self.game.board
+                
+                for i in range(2):
+                    flip_board = self.flip(flip_board,'horizontal')
+                    hash = self.hasher.computeHash(flip_board, self.table)
+                    t_table.update_TranspositionTable(hash,score)
+
+                    flip_board = self.flip(flip_board,'vertical')
+                    hash = self.hasher.computeHash(flip_board, self.table)
+                    t_table.update_TranspositionTable(hash,score)
+                
+                self.reset_board(initial_board_state)
+                
+                #invert the value of move
+                move = childNode.move_made
+                inverted_move = move[:]
+                if inverted_move[2] == '0':
+                    inverted_move[2] = '1'
+                else:
+                    inverted_move[2] = '0'
+
+                legal, _ = self.game.is_legal(int(inverted_move[0]),int(inverted_move[1]),int(inverted_move[2]))
+
+                if legal:
+                    self.game.play(inverted_move)
+
+                    flip_board = self.game.board
+                    for i in range(2):
+                        flip_board = self.flip(flip_board,'horizontal')
+                        hash = self.hasher.computeHash(flip_board, self.table)
+                        t_table.update_TranspositionTable(hash,score)
+
+                        flip_board = self.flip(flip_board,'vertical')
+                        hash = self.hasher.computeHash(flip_board, self.table)
+                        t_table.update_TranspositionTable(hash,score)
+
             self.reset_board(initial_board_state) 
 
         sorted_objects = sorted(childrenNodes, key=lambda obj: obj.score, reverse=True) 
-        print(sorted_objects[0].score,sorted_objects[0].move_made)
 
         return sorted_objects[0].move_made           
 
@@ -248,6 +347,21 @@ class FlatMC():
         self.game.board = []
         for row in target_state:
             self.game.board.append(list(row))
+
+    def flip(self, board, axis):
+        """
+            axis is 0 for horizontal and 1 for vertical
+        """
+
+        if axis == 'horizontal':
+        # Reverse the rows (flip along the horizontal axis)
+            return board[::-1]
+        elif axis == 'vertical':
+            # Reverse the columns in each row (flip along the vertical axis)
+            return [row[::-1] for row in board]
+
+    def invert(self, board):
+        pass
 
     def expand(self, node: MyNode):
         node.expand()
@@ -522,7 +636,7 @@ class CommandInterface:
         return len(self.get_legal_moves()) == 0
 
     def genmove(self, args):
-
+        
         try:
             # Set the time limit alarm
             signal.alarm(self.max_genmove_time)
@@ -538,7 +652,7 @@ class CommandInterface:
                 #---------------------------------
                 # rand_move = moves[random.randint(0, len(moves)-1)]
                 self.play(move_found)
-                # print(" ".join(rand_move))
+                print(" ".join(move_found))
             
             # Disable the time limit alarm 
             signal.alarm(0)
